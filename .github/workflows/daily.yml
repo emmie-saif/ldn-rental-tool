@@ -1,0 +1,82 @@
+name: london-rentals daily
+
+on:
+  schedule:
+    - cron: '17 6 * * *'  # 06:17 UTC, post-listings-refresh
+  workflow_dispatch:
+    inputs:
+      limit_outcodes:
+        description: 'Comma-separated outcodes (e.g. N4,E3). Empty = all.'
+        required: false
+        default: ''
+      limit_sources:
+        description: 'Comma-separated sources (openrent,spareroom,rightmove). Empty = all.'
+        required: false
+        default: ''
+
+concurrency:
+  group: rentals
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state.db from data branch
+        run: |
+          git fetch origin data:data 2>/dev/null || echo "no data branch yet"
+          if git show-ref --verify --quiet refs/heads/data; then
+            git show data:state.db > state.db || true
+          fi
+          ls -lh state.db 2>/dev/null || echo "starting fresh"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run scrape + render
+        env:
+          ORS_API_KEY: ${{ secrets.ORS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOMINATIM_USER_AGENT: "london-rentals/1.0 (github-actions)"
+          LIMIT_OUTCODES: ${{ inputs.limit_outcodes }}
+          LIMIT_SOURCES: ${{ inputs.limit_sources }}
+        run: python -m london_rentals.run
+
+      - name: Persist state.db to data branch
+        run: |
+          git config user.name "rentals-bot"
+          git config user.email "rentals-bot@users.noreply.github.com"
+          git checkout --orphan data-tmp
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          rm -rf .github london_rentals tests || true
+          git add -f state.db
+          git commit -m "state $(date -u +%FT%TZ)" || echo "no state changes"
+          git branch -D data 2>/dev/null || true
+          git branch -m data
+          git push -f origin data
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

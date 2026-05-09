@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>London rentals — climbing-adjacent</title>
+  <style>
+    :root {
+      --fg: #1a1a1a;
+      --muted: #5a5a5a;
+      --bg: #faf8f3;
+      --card: #fff;
+      --border: #e4e0d6;
+      --accent: #c14b2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+      color: var(--fg); background: var(--bg);
+      max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px;
+    }
+    h1 { font-size: 28px; margin: 0 0 4px; }
+    .subhead { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+    h2 { font-size: 20px; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    h2 .count { color: var(--muted); font-weight: normal; font-size: 14px; }
+    .cards { display: grid; gap: 12px; grid-template-columns: 1fr; }
+    @media (min-width: 720px) { .cards { grid-template-columns: 1fr 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .card h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+    .card h3 a { color: var(--fg); text-decoration: none; }
+    .card h3 a:hover { color: var(--accent); text-decoration: underline; }
+    .price { font-weight: 600; color: var(--accent); }
+    .meta { font-size: 13px; color: var(--muted); margin: 4px 0; }
+    .meta strong { color: var(--fg); }
+    .badges { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+    .badge {
+      font-size: 11px; padding: 2px 8px; border-radius: 999px;
+      background: #f0ede4; color: #4a4a4a; border: 1px solid var(--border);
+    }
+    .badge.yes { background: #e6f4e6; color: #2a6e2a; border-color: #c5e2c5; }
+    .badge.no  { background: #f7e6e6; color: #862e2e; border-color: #e2c5c5; }
+    .alts { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .alts a { color: var(--muted); }
+    .removed { opacity: 0.7; font-size: 13px; }
+    .removed .card { background: #f4f1ea; }
+    .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+    footer { margin-top: 48px; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>London rentals — climbing-adjacent</h1>
+  <p class="subhead">
+    Updated {{ generated_at }} · {{ total }} listings · ≤ £{{ "{:,}".format(rent_ceiling) }} pcm
+    · ≤ 10-min bike from Castle <em>or</em> Mile End · ≤ 30-min bike from Kings Cross
+  </p>
+
+  {% set bucket_titles = [
+    ('2bed_2bath', '2 bed · 2 bath'),
+    ('2bed_1bath', '2 bed · 1 bath'),
+    ('1bed_1bath', '1 bed · 1 bath'),
+    ('studio',     'Studio'),
+  ] %}
+
+  {% for key, title in bucket_titles %}
+    {% set cards = buckets[key] %}
+    <h2>{{ title }} <span class="count">· {{ cards|length }}</span></h2>
+    {% if cards %}
+      <div class="cards">
+      {% for c in cards %}
+        <div class="card">
+          <h3><a href="{{ c.url }}" rel="noreferrer noopener" target="_blank">
+            {{ c.address or c.postcode or 'Property ' ~ c.source_id }}
+          </a></h3>
+          <div class="meta">
+            <span class="price">£{{ "{:,}".format(c.price_pcm) if c.price_pcm else '?' }} pcm</span>
+            · {{ c.bedrooms if c.bedrooms is not none else '?' }} bed
+            · {{ c.bathrooms if c.bathrooms is not none else '?' }} bath
+            {% if c.available_from %}· avail {{ c.available_from }}{% endif %}
+          </div>
+          <div class="meta">
+            🚲 <strong>{{ c.closer_gym_minutes or '?' }} min</strong> to {{ c.closer_gym_name or 'gym' }}
+            · <strong>{{ c.kings_cross_minutes or '?' }} min</strong> to Kings Cross
+          </div>
+          <div class="badges">
+            <span class="badge {% if c.bathtub == 'yes' %}yes{% elif c.bathtub == 'no' %}no{% endif %}">
+              tub: {{ c.bathtub }}
+            </span>
+            <span class="badge">outdoor: {{ c.outdoor }}</span>
+            {% for a in c.amenities %}<span class="badge">{{ a }}</span>{% endfor %}
+            <span class="badge">{{ c.source }}</span>
+          </div>
+          {% if c.alternates %}
+            <div class="alts">
+              also on
+              {% for alt in c.alternates %}
+                <a href="{{ alt.url }}" rel="noreferrer noopener" target="_blank">{{ alt.source }} (£{{ "{:,}".format(alt.price_pcm) if alt.price_pcm else '?' }})</a>{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty">No listings in this category right now.</p>
+    {% endif %}
+  {% endfor %}
+
+  {% if removed %}
+    <h2>Removed since yesterday <span class="count">· {{ removed|length }}</span></h2>
+    <div class="cards removed">
+      {% for r in removed %}
+        <div class="card">
+          <h3>{{ r.address or 'Property ' ~ r.source_id }}</h3>
+          <div class="meta">
+            £{{ "{:,}".format(r.price_pcm) if r.price_pcm else '?' }} pcm
+            · {{ r.bedrooms if r.bedrooms is not none else '?' }} bed
+            · {{ r.bathrooms if r.bathrooms is not none else '?' }} bath
+            · {{ r.source }}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <footer>
+    Personal-use tool. Not for redistribution. Source: github.com/&lt;you&gt;/london-rentals
+  </footer>
+</body>
+</html>

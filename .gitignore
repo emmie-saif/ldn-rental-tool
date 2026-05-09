@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.env.local
+site/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+state.db
+state.db-journal
+state.db-wal
+state.db-shm
