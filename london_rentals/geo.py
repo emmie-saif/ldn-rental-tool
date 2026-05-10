@@ -47,6 +47,24 @@ def _throttle(last_at: float, interval: float) -> float:
     return time.monotonic()
 
 
+def _ors_post(url: str, body: dict, headers: dict) -> requests.Response:
+    """POST to ORS with retry on 429. Honours Retry-After if present."""
+    r = None
+    for attempt in range(4):
+        r = requests.post(url, json=body, headers=headers, timeout=config.HTTP_TIMEOUT_S)
+        if r.status_code != 429:
+            return r
+        retry_after = r.headers.get("Retry-After")
+        try:
+            wait = float(retry_after) if retry_after else 2.0 * (attempt + 1)
+        except ValueError:
+            wait = 2.0 * (attempt + 1)
+        wait = min(wait, 30.0)
+        log.info("ORS 429; sleeping %.1fs (attempt %d)", wait, attempt + 1)
+        time.sleep(wait)
+    return r  # last response (still 429 after retries)
+
+
 def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     r = 6_371_000.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -72,15 +90,14 @@ def fetch_isochrone(api_key: str, place: Place, counter: OrsCallCounter) -> dict
         "range_type": "time",
         "attributes": ["area"],
     }
-    r = requests.post(
+    r = _ors_post(
         config.ORS_BASE + config.ORS_ISOCHRONES_PATH,
-        json=body,
-        headers={
+        body,
+        {
             "Authorization": api_key,
             "Content-Type": "application/json",
             "Accept": "application/geo+json",
         },
-        timeout=config.HTTP_TIMEOUT_S,
     )
     counter.inc()
     r.raise_for_status()
@@ -177,15 +194,14 @@ def bike_route(
         return cached
     _last_ors_call_at = _throttle(_last_ors_call_at, config.ORS_REQ_INTERVAL_S)
     body = {"coordinates": [[lng, lat], [dest.lng, dest.lat]]}
-    r = requests.post(
+    r = _ors_post(
         config.ORS_BASE + config.ORS_DIRECTIONS_PATH,
-        json=body,
-        headers={
+        body,
+        {
             "Authorization": api_key,
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
-        timeout=config.HTTP_TIMEOUT_S,
     )
     counter.inc()
     r.raise_for_status()

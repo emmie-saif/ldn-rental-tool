@@ -8,6 +8,21 @@ cd "$ROOT"
 
 mkdir -p logs
 
+# Concurrency guard. macOS doesn't ship flock; use a directory-create lock
+# which is atomic on POSIX filesystems. Stale locks (process gone) are cleared.
+LOCK_DIR="$ROOT/.run.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  if [ -f "$LOCK_DIR/pid" ] && ! kill -0 "$(cat "$LOCK_DIR/pid")" 2>/dev/null; then
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" || { echo "[$(date -u +%FT%TZ)] lock unavailable; exiting" >> logs/runs.log; exit 0; }
+  else
+    echo "[$(date -u +%FT%TZ)] another run is in progress (pid $(cat "$LOCK_DIR/pid" 2>/dev/null)); exiting" >> logs/runs.log
+    exit 0
+  fi
+fi
+echo $$ > "$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
+
 if [ -f .env ]; then
   set -a
   # shellcheck disable=SC1091
