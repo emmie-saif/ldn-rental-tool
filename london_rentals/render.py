@@ -18,18 +18,24 @@ log = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
-# HMO / flatshare giveaways. A listing whose description matches any of these
-# is a room in a shared house, not a whole property — exclude from the page.
+# HMO / flatshare giveaways. A listing whose title OR description matches any
+# of these is a room in a shared house, not a whole property — exclude.
+# The "Available rooms" / "rooms already let" phrases live in a separate page
+# section on OpenRent that doesn't end up in description; "Shared Flat" and
+# "Room in" in the title catch those listings reliably.
 HMO_EXCLUSION_PATTERNS = [
     re.compile(r"rooms?\s+already\s+let", re.I),
     re.compile(r"\bavailable\s+rooms?\b", re.I),
+    re.compile(r"\bshared\s+(flat|house|accommodation)\b", re.I),
+    re.compile(r"\broom\s+in\s+(?:a\s+)?(?:shared\s+)?(flat|house)\b", re.I),
 ]
 
 
-def _is_hmo(description: Optional[str]) -> bool:
-    if not description:
+def _is_hmo(title: Optional[str], description: Optional[str]) -> bool:
+    blob = " | ".join(s for s in (title, description) if s)
+    if not blob:
         return False
-    return any(p.search(description) for p in HMO_EXCLUSION_PATTERNS)
+    return any(p.search(blob) for p in HMO_EXCLUSION_PATTERNS)
 
 
 def _field(row: sqlite3.Row, name: str) -> Optional[str]:
@@ -133,7 +139,7 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
         if bkt is None:
             continue
         # Filter out HMOs / room-shares masquerading as multi-bed flats.
-        if _is_hmo(_field(row, "description")):
+        if _is_hmo(_field(row, "title"), _field(row, "description")):
             continue
         gym = closer_gym(row["lat"], row["lng"])
         gym_route = _route(conn, row["lat"], row["lng"], gym.key)

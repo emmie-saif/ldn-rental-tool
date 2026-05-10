@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS listings (
   raw_json          TEXT,
   features_json     TEXT,
   description       TEXT,
+  title             TEXT,
   cluster_id        TEXT,
   PRIMARY KEY (source, source_id)
 );
@@ -93,7 +94,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
     if "description" not in cols:
         conn.execute("ALTER TABLE listings ADD COLUMN description TEXT")
-        conn.commit()
+    if "title" not in cols:
+        conn.execute("ALTER TABLE listings ADD COLUMN title TEXT")
+    conn.commit()
 
 
 @contextmanager
@@ -118,11 +121,11 @@ def upsert_listing(conn: sqlite3.Connection, row: dict, now: str) -> bool:
             INSERT INTO listings (source, source_id, url, first_seen_utc, last_seen_utc,
                                   price_pcm, bedrooms, bathrooms, available_from,
                                   postcode, address, lat, lng, raw_json, features_json,
-                                  description)
+                                  description, title)
             VALUES (:source, :source_id, :url, :now, :now,
                     :price_pcm, :bedrooms, :bathrooms, :available_from,
                     :postcode, :address, :lat, :lng, :raw_json, :features_json,
-                    :description)
+                    :description, :title)
             """,
             {**row, "now": now},
         )
@@ -146,6 +149,7 @@ def upsert_listing(conn: sqlite3.Connection, row: dict, now: str) -> bool:
                raw_json       = COALESCE(:raw_json,       raw_json),
                features_json  = COALESCE(:features_json,  features_json),
                description    = COALESCE(:description,    description),
+               title          = COALESCE(:title,          title),
                removed_utc    = NULL
          WHERE source = :source AND source_id = :source_id
         """,

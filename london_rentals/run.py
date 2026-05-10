@@ -149,7 +149,7 @@ def _process_listing(
     if listing.price_pcm is not None and listing.price_pcm > config.MAX_RENT_CEILING_PCM:
         return 0
     existing = conn.execute(
-        "SELECT lat, lng, price_pcm, bedrooms, bathrooms, address, description, features_json FROM listings WHERE source = ? AND source_id = ?",
+        "SELECT lat, lng, price_pcm, bedrooms, bathrooms, address, description, title, features_json FROM listings WHERE source = ? AND source_id = ?",
         (listing.source, listing.source_id),
     ).fetchone()
     # Re-fetch the detail page when:
@@ -160,7 +160,7 @@ def _process_listing(
     #     all earlier rows have NULL — they need a single re-fetch to heal.
     is_new = existing is None
     needs_refetch = is_new or any(
-        existing[col] is None for col in ("lat", "lng", "price_pcm", "bedrooms", "bathrooms", "address", "description")
+        existing[col] is None for col in ("lat", "lng", "price_pcm", "bedrooms", "bathrooms", "address", "description", "title")
     )
     if needs_refetch:
         listing = source.fetch_detail(listing)
@@ -213,6 +213,7 @@ def _process_listing(
         "raw_json": json.dumps(listing.raw)[:5000],
         "features_json": feats_json,
         "description": listing.description,
+        "title": listing.title,
     }
     db.upsert_listing(conn, row, db.utc_now_iso())
     conn.commit()
