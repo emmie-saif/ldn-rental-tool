@@ -144,8 +144,9 @@ def _process_listing(
     dry_run: bool,
 ) -> int:
     """Process one search-result listing. Returns 1 if newly inserted, 0 otherwise."""
-    # Cheap pre-filter: known-too-expensive listings get dropped before detail fetch.
-    if listing.price_pcm is not None and listing.price_pcm > config.RENT_CEILING_PCM:
+    # Cheap pre-filter: known-too-expensive (above the loosest cap) get dropped
+    # before detail fetch. Per-bedroom ceiling check happens after we know beds.
+    if listing.price_pcm is not None and listing.price_pcm > config.MAX_RENT_CEILING_PCM:
         return 0
     existing = conn.execute(
         "SELECT lat, lng, price_pcm, bedrooms, address, features_json FROM listings WHERE source = ? AND source_id = ?",
@@ -164,8 +165,8 @@ def _process_listing(
     else:
         listing.lat = existing["lat"]
         listing.lng = existing["lng"]
-    # Re-check price after detail fetch.
-    if listing.price_pcm is not None and listing.price_pcm > config.RENT_CEILING_PCM:
+    # Re-check price against the per-bedroom ceiling after detail fetch.
+    if listing.price_pcm is not None and listing.price_pcm > config.rent_ceiling_for(listing.bedrooms):
         return 0
     # Geocode if needed.
     if (listing.lat is None or listing.lng is None) and listing.address:
@@ -177,10 +178,12 @@ def _process_listing(
     eligible, _flags = geo.is_eligible(listing.lat, listing.lng, polys)
     if not eligible:
         return 0
-    # Routing for new survivors.
+    # Routing for survivors: closer gym (one of two) + every display destination
+    # (KC, LISA, ...). All cached by rounded lat/lng so re-runs cost ~0.
     gym = geo.closer_gym(listing.lat, listing.lng)
     geo.bike_route(conn, ors_key, listing.lat, listing.lng, gym, counter)
-    geo.bike_route(conn, ors_key, listing.lat, listing.lng, config.KINGS_CROSS, counter)
+    for dest in config.DISPLAY_DESTINATIONS:
+        geo.bike_route(conn, ors_key, listing.lat, listing.lng, dest, counter)
     # Feature extraction. Re-extract whenever we just re-fetched the detail
     # page (otherwise features stay frozen at whatever the old parser produced).
     if needs_refetch:

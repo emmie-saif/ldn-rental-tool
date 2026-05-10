@@ -14,13 +14,41 @@ class Place:
 
 CASTLE = Place("castle", "Castle Climbing Centre", 51.5722, -0.0863, 10)
 MILE_END = Place("mile_end", "Mile End Climbing Wall", 51.5266, -0.0298, 10)
-KINGS_CROSS = Place("kings_cross", "Kings Cross", 51.5308, -0.1238, 30)
+KINGS_CROSS = Place("kings_cross", "Kings Cross", 51.5308, -0.1238, 35)
+
+# LISA — London Initiative for Safe AI. Address isn't published on their
+# website; coordinates here are Old Street tube as a placeholder for the
+# "Old Street / Shoreditch" hub they describe. Refine once we have the exact
+# postcode. bike_minutes is informational only (LISA is display-only — we
+# show the time to it but don't filter on it).
+LISA = Place("lisa", "LISA", 51.5258, -0.0871, 0)
 
 GYMS: list[Place] = [CASTLE, MILE_END]
-DESTINATIONS: list[Place] = [CASTLE, MILE_END, KINGS_CROSS]
+# Destinations we compute isochrones for (used for in/out filtering).
+ISOCHRONE_DESTINATIONS: list[Place] = [CASTLE, MILE_END, KINGS_CROSS]
+# Destinations we route to per-listing AND show on the card (KC + LISA).
+DISPLAY_DESTINATIONS: list[Place] = [KINGS_CROSS, LISA]
+# Backwards-compat alias for any callers still using DESTINATIONS.
+DESTINATIONS = ISOCHRONE_DESTINATIONS
 
-RENT_CEILING_PCM = 3500
-MAX_BEDROOMS = 2
+# Rent ceiling is per-bedroom: 3-beds get a slightly higher cap.
+RENT_CEILINGS_BY_BEDS: dict[int, int] = {
+    0: 3500,
+    1: 3500,
+    2: 3500,
+    3: 4000,
+}
+MAX_RENT_CEILING_PCM = max(RENT_CEILINGS_BY_BEDS.values())  # used at the source-side filter
+MAX_BEDROOMS = 3
+
+def rent_ceiling_for(bedrooms: int | None) -> int:
+    """Per-bedroom rent ceiling. Returns the loosest cap if bedrooms unknown."""
+    if bedrooms is None:
+        return MAX_RENT_CEILING_PCM
+    return RENT_CEILINGS_BY_BEDS.get(bedrooms, MAX_RENT_CEILING_PCM)
+
+# Backwards-compat: anywhere RENT_CEILING_PCM is still referenced gets the loose cap.
+RENT_CEILING_PCM = MAX_RENT_CEILING_PCM
 
 # London outcodes that overlap the eligible region (the union of 10-min cycling
 # isochrones around both gyms). Each source is queried once per outcode; the

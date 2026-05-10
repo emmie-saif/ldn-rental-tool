@@ -59,6 +59,8 @@
   </p>
 
   {% set bucket_titles = [
+    ('3bed_3bath', '3 bed · 3 bath'),
+    ('3bed_2bath', '3 bed · 2 bath'),
     ('2bed_2bath', '2 bed · 2 bath'),
     ('2bed_1bath', '2 bed · 1 bath'),
     ('1bed_1bath', '1 bed · 1 bath'),
@@ -83,7 +85,9 @@
           </div>
           <div class="meta">
             🚲 <strong>{{ c.closer_gym_minutes or '?' }} min</strong> to {{ c.closer_gym_name or 'gym' }}
-            · <strong>{{ c.kings_cross_minutes or '?' }} min</strong> to Kings Cross
+            {% for d in c.extra_destinations %}
+              · <strong>{{ d.minutes or '?' }} min</strong> to {{ d.name }}
+            {% endfor %}
           </div>
           <div class="badges">
             <span class="badge {% if c.bathtub == 'yes' %}yes{% elif c.bathtub == 'no' %}no{% endif %}">

@@ -55,7 +55,9 @@ class OpenRent(Source):
         url = SEARCH_URL.format(area=outcode.lower())
         params = {
             "term": outcode,
-            "prices_max": config.RENT_CEILING_PCM,
+            # Query at the loosest cap; per-bedroom filtering happens after we
+            # know how many beds each listing has.
+            "prices_max": config.MAX_RENT_CEILING_PCM,
             "bedrooms_max": config.MAX_BEDROOMS,
             "isLive": "true",
         }

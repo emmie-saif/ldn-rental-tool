@@ -37,9 +37,10 @@ class Card:
     closer_gym_name: Optional[str]
     closer_gym_minutes: Optional[int]
     closer_gym_distance_m: Optional[int]
-    kings_cross_minutes: Optional[int]
-    kings_cross_distance_m: Optional[int]
-    first_seen_utc: str
+    # extra_destinations is a list of {name, minutes, distance_m} dicts —
+    # one entry per config.DISPLAY_DESTINATIONS (e.g. Kings Cross, LISA).
+    extra_destinations: list[dict] = field(default_factory=list)
+    first_seen_utc: str = ""
     alternates: list[dict] = field(default_factory=list)
 
 
@@ -64,6 +65,13 @@ def _bucket(beds: Optional[int], baths: Optional[int]) -> Optional[str]:
         if baths and baths >= 2:
             return "2bed_2bath"
         return "2bed_1bath"
+    if beds == 3:
+        if baths and baths >= 3:
+            return "3bed_3bath"
+        if baths and baths >= 2:
+            return "3bed_2bath"
+        # 3-bed/1-bath isn't a requested category — drop.
+        return None
     return None
 
 
@@ -82,6 +90,8 @@ def _route(conn: sqlite3.Connection, lat: float, lng: float, dest_key: str) -> O
 def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
     """Return cards bucketed by category, each list sorted by closer-gym minutes."""
     buckets: dict[str, list[Card]] = {
+        "3bed_3bath": [],
+        "3bed_2bath": [],
         "2bed_2bath": [],
         "2bed_1bath": [],
         "1bed_1bath": [],
@@ -102,8 +112,15 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
             continue
         gym = closer_gym(row["lat"], row["lng"])
         gym_route = _route(conn, row["lat"], row["lng"], gym.key)
-        kc_route = _route(conn, row["lat"], row["lng"], config.KINGS_CROSS.key)
         feats = json.loads(row["features_json"]) if row["features_json"] else {}
+        extra_destinations = []
+        for dest in config.DISPLAY_DESTINATIONS:
+            r = _route(conn, row["lat"], row["lng"], dest.key)
+            extra_destinations.append({
+                "name": dest.name,
+                "minutes": round(r[0] / 60) if r else None,
+                "distance_m": r[1] if r else None,
+            })
         alternates = [
             {
                 "source": a["source"],
@@ -117,7 +134,7 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
             source=row["source"],
             source_id=row["source_id"],
             url=row["url"],
-            title=row["raw_json"] and None,  # placeholder; pull from listings if needed
+            title=None,
             address=row["address"],
             postcode=row["postcode"],
             price_pcm=row["price_pcm"],
@@ -130,8 +147,7 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
             closer_gym_name=gym.name,
             closer_gym_minutes=round(gym_route[0] / 60) if gym_route else None,
             closer_gym_distance_m=gym_route[1] if gym_route else None,
-            kings_cross_minutes=round(kc_route[0] / 60) if kc_route else None,
-            kings_cross_distance_m=kc_route[1] if kc_route else None,
+            extra_destinations=extra_destinations,
             first_seen_utc=row["first_seen_utc"],
             alternates=alternates,
         ))

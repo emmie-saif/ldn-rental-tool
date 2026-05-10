@@ -34,7 +34,7 @@ class SpareRoom(Source):
         params = {
             "search_for": "whole-properties",
             "where": outcode,
-            "max_rent": config.RENT_CEILING_PCM,
+            "max_rent": config.MAX_RENT_CEILING_PCM,
             "max_beds": config.MAX_BEDROOMS,
             "rent_period": "pcm",
         }
