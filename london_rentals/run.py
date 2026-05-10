@@ -151,7 +151,13 @@ def _process_listing(
         "SELECT lat, lng, features_json FROM listings WHERE source = ? AND source_id = ?",
         (listing.source, listing.source_id),
     ).fetchone()
-    if existing is None:
+    # Re-fetch the detail page when:
+    #   - we've never seen this listing, OR
+    #   - we've seen it but its cached lat/lng are NULL (parser was broken at
+    #     the time it was first stored — re-parse with the current code).
+    is_new = existing is None
+    needs_refetch = is_new or existing["lat"] is None or existing["lng"] is None
+    if needs_refetch:
         listing = source.fetch_detail(listing)
     else:
         listing.lat = existing["lat"]
@@ -173,8 +179,9 @@ def _process_listing(
     gym = geo.closer_gym(listing.lat, listing.lng)
     geo.bike_route(conn, ors_key, listing.lat, listing.lng, gym, counter)
     geo.bike_route(conn, ors_key, listing.lat, listing.lng, config.KINGS_CROSS, counter)
-    # Feature extraction.
-    if existing is None:
+    # Feature extraction. Re-extract whenever we just re-fetched the detail
+    # page (otherwise features stay frozen at whatever the old parser produced).
+    if needs_refetch:
         feats = extract_features(listing, anthropic_key)
         feats_json = json.dumps(feats)
     else:
@@ -183,7 +190,7 @@ def _process_listing(
         log.info("[dry-run] would upsert %s/%s @ %.5f,%.5f price=%s beds=%s baths=%s",
                  listing.source, listing.source_id, listing.lat, listing.lng,
                  listing.price_pcm, listing.bedrooms, listing.bathrooms)
-        return 1 if existing is None else 0
+        return 1 if is_new else 0
     row = {
         "source": listing.source,
         "source_id": listing.source_id,
@@ -199,9 +206,9 @@ def _process_listing(
         "raw_json": json.dumps(listing.raw)[:5000],
         "features_json": feats_json,
     }
-    inserted = db.upsert_listing(conn, row, db.utc_now_iso())
+    db.upsert_listing(conn, row, db.utc_now_iso())
     conn.commit()
-    return 1 if inserted else 0
+    return 1 if is_new else 0
 
 
 if __name__ == "__main__":
