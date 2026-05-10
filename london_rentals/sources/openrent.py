@@ -135,13 +135,28 @@ class OpenRent(Source):
         if m:
             listing.address = f"{m.group(1).strip()}, {m.group(2).upper()}, London"
 
-        # --- Bedrooms: parse from title. "Studio" / "Bedsit" → 0.
-        if re.search(r"\bStudio\b|\bBedsit\b", title_body, re.I):
-            listing.bedrooms = 0
-        else:
-            m = re.search(r"(\d+)\s*Bed\b", title_body, re.I)
-            if m:
-                listing.bedrooms = int(m.group(1))
+        # --- Bedrooms / Bathrooms: OpenRent renders a row of pills under the
+        # title, each as <span class="text-secondary-emphasis">N bedrooms</span>
+        # (with the unit label wrapped in a nested span). Parse the row first
+        # because it's the authoritative source for both fields. Fall back to
+        # title parsing for bedrooms if no pill matches (e.g. studio listings).
+        for span in soup.select("span.text-secondary-emphasis"):
+            txt = span.get_text(" ", strip=True)
+            m_b = re.match(r"(\d+)\s+bedrooms?\b", txt, re.I)
+            if m_b:
+                listing.bedrooms = int(m_b.group(1))
+                continue
+            m_b = re.match(r"(\d+)\s+bathrooms?\b", txt, re.I)
+            if m_b:
+                listing.bathrooms = int(m_b.group(1))
+                continue
+        if listing.bedrooms is None:
+            if re.search(r"\bStudio\b|\bBedsit\b", title_body, re.I):
+                listing.bedrooms = 0
+            else:
+                m = re.search(r"(\d+)\s*Bed\b", title_body, re.I)
+                if m:
+                    listing.bedrooms = int(m.group(1))
 
         # --- Lat/Lng: <... data-lat="51.568" data-lng="-0.097" ...>
         m = re.search(r'data-lat="(-?\d+\.\d+)"', html)
