@@ -31,12 +31,27 @@ PROPERTY_LINK_RX = re.compile(r'href=["\'](/property-to-rent/[^"\']+)["\']')
 
 class OpenRent(Source):
     name = "openrent"
+    HOME_URL = "https://www.openrent.co.uk/"
 
     def __init__(self, session: Optional[requests.Session] = None):
         self.session = session or requests.Session()
         self.session.headers.update(config.HTTP_BROWSER_HEADERS)
+        self._warmed = False
+
+    def _warm(self) -> None:
+        """Hit the homepage once to acquire session cookies. OpenRent serves
+        405 on direct search hits from cold cloud IPs."""
+        if self._warmed:
+            return
+        try:
+            self.session.get(self.HOME_URL, timeout=config.HTTP_TIMEOUT_S)
+            time.sleep(1.0)
+        except requests.RequestException as exc:
+            log.warning("OpenRent homepage warm-up failed: %s", exc)
+        self._warmed = True
 
     def fetch_outcode(self, outcode: str) -> Iterable[Listing]:
+        self._warm()
         url = SEARCH_URL.format(area=outcode.lower())
         params = {
             "term": outcode,
@@ -44,11 +59,20 @@ class OpenRent(Source):
             "bedrooms_max": config.MAX_BEDROOMS,
             "isLive": "true",
         }
-        try:
-            r = self.session.get(url, params=params, timeout=config.HTTP_TIMEOUT_S)
-            r.raise_for_status()
-        except requests.RequestException as exc:
-            log.warning("OpenRent search failed for %s: %s", outcode, exc)
+        headers = {"Referer": self.HOME_URL}
+        last_exc: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                r = self.session.get(url, params=params, headers=headers, timeout=config.HTTP_TIMEOUT_S)
+                r.raise_for_status()
+                last_exc = None
+                break
+            except requests.RequestException as exc:
+                last_exc = exc
+                log.info("OpenRent attempt %d for %s: %s", attempt + 1, outcode, exc)
+                time.sleep(1.5 * (attempt + 1))
+        if last_exc is not None:
+            log.warning("OpenRent search failed for %s after 3 attempts: %s", outcode, last_exc)
             return
         time.sleep(0.5)
         for link in self._extract_links(r.text):
@@ -59,8 +83,13 @@ class OpenRent(Source):
             yield Listing(source=self.name, source_id=source_id, url=full_url)
 
     def fetch_detail(self, listing: Listing) -> Listing:
+        self._warm()
         try:
-            r = self.session.get(listing.url, timeout=config.HTTP_TIMEOUT_S)
+            r = self.session.get(
+                listing.url,
+                headers={"Referer": self.HOME_URL},
+                timeout=config.HTTP_TIMEOUT_S,
+            )
             r.raise_for_status()
         except requests.RequestException as exc:
             log.warning("OpenRent detail failed for %s: %s", listing.url, exc)
