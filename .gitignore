@@ -14,3 +14,4 @@ state.db-journal
 state.db-wal
 state.db-shm
 logs/
+.run.lock/
