@@ -16,12 +16,11 @@ CASTLE = Place("castle", "Castle Climbing Centre", 51.5722, -0.0863, 10)
 MILE_END = Place("mile_end", "Mile End Climbing Wall", 51.5266, -0.0298, 10)
 KINGS_CROSS = Place("kings_cross", "Kings Cross", 51.5308, -0.1238, 35)
 
-# LISA — London Initiative for Safe AI. Address isn't published on their
-# website; coordinates here are Old Street tube as a placeholder for the
-# "Old Street / Shoreditch" hub they describe. Refine once we have the exact
-# postcode. bike_minutes is informational only (LISA is display-only — we
-# show the time to it but don't filter on it).
-LISA = Place("lisa", "LISA", 51.5258, -0.0871, 0)
+# LISA — London Initiative for Safe AI. 25 Holywell Row, Shoreditch, EC2A 4XE.
+# Coordinates verified against the OpenStreetMap entry for "London Initiative
+# for Safe AI" (office/coworking). Display-only destination — we route to it
+# and show the time on each card, but don't filter on distance.
+LISA = Place("lisa", "LISA", 51.5228306, -0.0821032, 0)
 
 GYMS: list[Place] = [CASTLE, MILE_END]
 # Destinations we compute isochrones for (used for in/out filtering).
