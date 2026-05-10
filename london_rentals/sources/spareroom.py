@@ -28,7 +28,7 @@ class SpareRoom(Source):
 
     def __init__(self, session: Optional[requests.Session] = None):
         self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": config.HTTP_USER_AGENT})
+        self.session.headers.update(config.HTTP_BROWSER_HEADERS)
 
     def fetch_outcode(self, outcode: str) -> Iterable[Listing]:
         params = {
