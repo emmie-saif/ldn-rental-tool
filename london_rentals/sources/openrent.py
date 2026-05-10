@@ -119,82 +119,89 @@ class OpenRent(Source):
     @staticmethod
     def _parse_detail(listing: Listing, html: str) -> Listing:
         soup = BeautifulSoup(html, "lxml")
-        # Try JSON-LD first.
-        for tag in soup.find_all("script", type="application/ld+json"):
-            try:
-                data = json.loads(tag.string or "")
-            except (json.JSONDecodeError, TypeError):
-                continue
-            if not isinstance(data, dict):
-                continue
-            if data.get("@type") in {"Apartment", "House", "Residence", "Accommodation", "Product"}:
-                _apply_jsonld(listing, data)
-                break
-        # Title + description fallback.
-        title = soup.find("h1")
-        if title:
-            listing.title = title.get_text(strip=True)
-        desc = soup.find(id="description") or soup.find(class_="description")
-        if desc:
-            listing.description = desc.get_text(" ", strip=True)
-        # Structured features: bullet list of amenities.
-        features = []
-        for li in soup.select("ul.property-features li, ul.features li, .key-features li"):
-            txt = li.get_text(" ", strip=True)
-            if txt:
-                features.append(txt)
-        if features:
-            listing.structured_features = features
-        # Price: first £nnnn pcm.
-        if listing.price_pcm is None:
-            m = re.search(r"£\s*([\d,]+)\s*(?:pcm|per\s*month)", html, re.I)
-            if m:
-                listing.price_pcm = int(m.group(1).replace(",", ""))
-        # Beds / baths.
-        if listing.bedrooms is None:
-            m = re.search(r"(\d+)\s*bedroom", html, re.I)
+
+        # --- Title: "London - 1 Bed Flat, Adolphus Road, N4 - To Rent Now for £2,100.00 p/m"
+        h1 = soup.find("h1")
+        if h1:
+            listing.title = h1.get_text(strip=True)
+        page_title = soup.title.string if soup.title and soup.title.string else ""
+
+        # --- Address / outcode: take the "<street>, <outcode>" part from the title.
+        # Title comes either from <h1> or from <title>; both have the same body.
+        title_body = listing.title or page_title
+        m = re.search(r"(?:Studio|Bedsit|\d+\s*Bed\s+\w+)[, ]+([^,]+),\s*([A-Z]{1,2}\d[A-Z\d]?)\b", title_body, re.I)
+        if m:
+            listing.address = f"{m.group(1).strip()}, {m.group(2).upper()}, London"
+
+        # --- Bedrooms: parse from title. "Studio" / "Bedsit" → 0.
+        if re.search(r"\bStudio\b|\bBedsit\b", title_body, re.I):
+            listing.bedrooms = 0
+        else:
+            m = re.search(r"(\d+)\s*Bed\b", title_body, re.I)
             if m:
                 listing.bedrooms = int(m.group(1))
-        if listing.bathrooms is None:
-            m = re.search(r"(\d+)\s*bathroom", html, re.I)
+
+        # --- Lat/Lng: <... data-lat="51.568" data-lng="-0.097" ...>
+        m = re.search(r'data-lat="(-?\d+\.\d+)"', html)
+        if m:
+            listing.lat = float(m.group(1))
+        m = re.search(r'data-lng="(-?\d+\.\d+)"', html)
+        if m:
+            listing.lng = float(m.group(1))
+
+        # --- Structured table: <td class="fw-medium">Label</td><td>Value</td>
+        table_fields: dict[str, str] = {}
+        for row in soup.select("td.fw-medium"):
+            label = row.get_text(strip=True)
+            sibling = row.find_next_sibling("td")
+            if sibling:
+                table_fields[label] = sibling.get_text(" ", strip=True)
+
+        rent_str = table_fields.get("Rent PCM") or table_fields.get("Rent")
+        if rent_str:
+            m = re.search(r"([\d,]+)", rent_str)
             if m:
-                listing.bathrooms = int(m.group(1))
-        # Available from.
-        m = re.search(r"available\s*(?:from)?\s*[:\-]?\s*([0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{2,4}|now|today)", html, re.I)
-        if m:
-            listing.available_from = m.group(1)
-        # Postcode.
-        m = re.search(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b", html)
-        if m:
-            listing.postcode = m.group(1).upper()
-        listing.raw = {"html_len": len(html)}
+                listing.price_pcm = int(m.group(1).replace(",", ""))
+        if listing.price_pcm is None:
+            # Title fallback: "for £2,100.00 p/m"
+            m = re.search(r"for\s*[£\xa3]\s*([\d,]+)", title_body)
+            if m:
+                listing.price_pcm = int(m.group(1).replace(",", ""))
+
+        avail = table_fields.get("Available From")
+        if avail:
+            listing.available_from = avail
+
+        furnishing = table_fields.get("Furnishing")
+
+        # OpenRent doesn't expose bathroom count anywhere on the listing page,
+        # so leave listing.bathrooms as None (the renderer will show "?").
+
+        # --- Description
+        desc_el = soup.find(id="description") or soup.find(class_="description")
+        if desc_el:
+            listing.description = desc_el.get_text(" ", strip=True)
+        else:
+            meta = soup.find("meta", attrs={"name": "twitter:description"}) \
+                or soup.find("meta", attrs={"name": "description"})
+            if meta and meta.get("content"):
+                listing.description = meta["content"]
+
+        # --- Postcode: derive from the parsed address rather than scanning the
+        # full HTML (which would pick up OpenRent's office postcode).
+        if listing.address:
+            m = re.search(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b", listing.address)
+            if m:
+                listing.postcode = m.group(1).upper()
+
+        # --- Structured features: collect the few that OpenRent does expose.
+        feats: list[str] = []
+        if furnishing:
+            feats.append(f"Furnishing: {furnishing}")
+        for label in ("EPC Rating",):
+            if label in table_fields:
+                feats.append(f"{label}: {table_fields[label]}")
+        listing.structured_features = feats
+
+        listing.raw = {"html_len": len(html), "table_fields": list(table_fields.keys())}
         return listing
-
-
-def _apply_jsonld(listing: Listing, data: dict) -> None:
-    addr = data.get("address")
-    if isinstance(addr, dict):
-        parts = [
-            addr.get("streetAddress"),
-            addr.get("addressLocality"),
-            addr.get("postalCode"),
-        ]
-        listing.address = ", ".join(p for p in parts if p) or listing.address
-        if addr.get("postalCode"):
-            listing.postcode = addr["postalCode"].upper()
-    geo = data.get("geo")
-    if isinstance(geo, dict):
-        try:
-            listing.lat = float(geo["latitude"])
-            listing.lng = float(geo["longitude"])
-        except (KeyError, TypeError, ValueError):
-            pass
-    if "numberOfRooms" in data:
-        try:
-            listing.bedrooms = int(data["numberOfRooms"])
-        except (TypeError, ValueError):
-            pass
-    if "name" in data:
-        listing.title = data.get("name")
-    if "description" in data:
-        listing.description = data.get("description")
