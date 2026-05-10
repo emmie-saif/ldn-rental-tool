@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 
 SEARCH_URL = "https://www.openrent.co.uk/properties-to-rent/{area}"
 LISTING_URL = "https://www.openrent.co.uk/{slug}"
-PROPERTY_ID_RX = re.compile(r"/property-to-rent/[^?\"']+-(\d+)\b")
 PROPERTY_LINK_RX = re.compile(r'href=["\'](/property-to-rent/[^"\']+)["\']')
 
 
@@ -82,8 +81,11 @@ class OpenRent(Source):
 
     @staticmethod
     def _id_from_link(link: str) -> Optional[str]:
-        m = PROPERTY_ID_RX.search(link)
-        return m.group(1) if m else None
+        # OpenRent paths look like `/property-to-rent/<area>/<title-slug>/<id>`
+        # where <id> is the trailing numeric segment.
+        path = link.split("?", 1)[0].rstrip("/")
+        last = path.rsplit("/", 1)[-1]
+        return last if last.isdigit() else None
 
     @staticmethod
     def _parse_detail(listing: Listing, html: str) -> Listing:
