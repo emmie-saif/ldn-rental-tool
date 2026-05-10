@@ -148,15 +148,17 @@ def _process_listing(
     if listing.price_pcm is not None and listing.price_pcm > config.RENT_CEILING_PCM:
         return 0
     existing = conn.execute(
-        "SELECT lat, lng, features_json FROM listings WHERE source = ? AND source_id = ?",
+        "SELECT lat, lng, price_pcm, bedrooms, address, features_json FROM listings WHERE source = ? AND source_id = ?",
         (listing.source, listing.source_id),
     ).fetchone()
     # Re-fetch the detail page when:
     #   - we've never seen this listing, OR
-    #   - we've seen it but its cached lat/lng are NULL (parser was broken at
-    #     the time it was first stored — re-parse with the current code).
+    #   - any of the key fields are NULL (parser was broken when this row was
+    #     first stored — re-parse with the current code to self-heal).
     is_new = existing is None
-    needs_refetch = is_new or existing["lat"] is None or existing["lng"] is None
+    needs_refetch = is_new or any(
+        existing[col] is None for col in ("lat", "lng", "price_pcm", "bedrooms", "address")
+    )
     if needs_refetch:
         listing = source.fetch_detail(listing)
     else:
