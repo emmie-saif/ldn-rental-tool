@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS listings (
   lng               REAL,
   raw_json          TEXT,
   features_json     TEXT,
+  description       TEXT,
   cluster_id        TEXT,
   PRIMARY KEY (source, source_id)
 );
@@ -83,7 +84,16 @@ def connect(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Forward-only schema migrations for DBs created by an earlier version."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
+    if "description" not in cols:
+        conn.execute("ALTER TABLE listings ADD COLUMN description TEXT")
+        conn.commit()
 
 
 @contextmanager
@@ -107,10 +117,12 @@ def upsert_listing(conn: sqlite3.Connection, row: dict, now: str) -> bool:
             """
             INSERT INTO listings (source, source_id, url, first_seen_utc, last_seen_utc,
                                   price_pcm, bedrooms, bathrooms, available_from,
-                                  postcode, address, lat, lng, raw_json, features_json)
+                                  postcode, address, lat, lng, raw_json, features_json,
+                                  description)
             VALUES (:source, :source_id, :url, :now, :now,
                     :price_pcm, :bedrooms, :bathrooms, :available_from,
-                    :postcode, :address, :lat, :lng, :raw_json, :features_json)
+                    :postcode, :address, :lat, :lng, :raw_json, :features_json,
+                    :description)
             """,
             {**row, "now": now},
         )
@@ -133,6 +145,7 @@ def upsert_listing(conn: sqlite3.Connection, row: dict, now: str) -> bool:
                lng            = COALESCE(:lng,            lng),
                raw_json       = COALESCE(:raw_json,       raw_json),
                features_json  = COALESCE(:features_json,  features_json),
+               description    = COALESCE(:description,    description),
                removed_utc    = NULL
          WHERE source = :source AND source_id = :source_id
         """,

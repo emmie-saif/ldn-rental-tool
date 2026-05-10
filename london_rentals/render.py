@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import logging
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,6 +17,27 @@ from london_rentals.geo import closer_gym
 log = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+# HMO / flatshare giveaways. A listing whose description matches any of these
+# is a room in a shared house, not a whole property — exclude from the page.
+HMO_EXCLUSION_PATTERNS = [
+    re.compile(r"rooms?\s+already\s+let", re.I),
+    re.compile(r"\bavailable\s+rooms?\b", re.I),
+]
+
+
+def _is_hmo(description: Optional[str]) -> bool:
+    if not description:
+        return False
+    return any(p.search(description) for p in HMO_EXCLUSION_PATTERNS)
+
+
+def _field(row: sqlite3.Row, name: str) -> Optional[str]:
+    """Safe getter for sqlite3.Row — returns None if the column isn't present."""
+    try:
+        return row[name]
+    except (IndexError, KeyError):
+        return None
 
 
 @dataclass
@@ -109,6 +131,9 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
     for row in canon:
         bkt = _bucket(row["bedrooms"], row["bathrooms"])
         if bkt is None:
+            continue
+        # Filter out HMOs / room-shares masquerading as multi-bed flats.
+        if _is_hmo(_field(row, "description")):
             continue
         gym = closer_gym(row["lat"], row["lng"])
         gym_route = _route(conn, row["lat"], row["lng"], gym.key)
