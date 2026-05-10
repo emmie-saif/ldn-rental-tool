@@ -115,21 +115,24 @@ def upsert_listing(conn: sqlite3.Connection, row: dict, now: str) -> bool:
             {**row, "now": now},
         )
         return True
+    # COALESCE so subsequent runs that skip detail re-fetch (and therefore
+    # carry only url + cached lat/lng on the Listing) don't overwrite the
+    # fields the previous run populated.
     conn.execute(
         """
         UPDATE listings
            SET last_seen_utc  = :now,
                url            = :url,
-               price_pcm      = :price_pcm,
-               bedrooms       = :bedrooms,
-               bathrooms      = :bathrooms,
-               available_from = :available_from,
-               postcode       = :postcode,
-               address        = :address,
-               lat            = :lat,
-               lng            = :lng,
-               raw_json       = :raw_json,
-               features_json  = COALESCE(:features_json, features_json),
+               price_pcm      = COALESCE(:price_pcm,      price_pcm),
+               bedrooms       = COALESCE(:bedrooms,       bedrooms),
+               bathrooms      = COALESCE(:bathrooms,      bathrooms),
+               available_from = COALESCE(:available_from, available_from),
+               postcode       = COALESCE(:postcode,       postcode),
+               address        = COALESCE(:address,        address),
+               lat            = COALESCE(:lat,            lat),
+               lng            = COALESCE(:lng,            lng),
+               raw_json       = COALESCE(:raw_json,       raw_json),
+               features_json  = COALESCE(:features_json,  features_json),
                removed_utc    = NULL
          WHERE source = :source AND source_id = :source_id
         """,
