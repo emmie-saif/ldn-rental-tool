@@ -18,12 +18,15 @@ log = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
-# HMO / flatshare giveaways. A listing whose title OR description matches any
-# of these is a room in a shared house, not a whole property — exclude.
-# The "Available rooms" / "rooms already let" phrases live in a separate page
-# section on OpenRent that doesn't end up in description; "Shared Flat" and
-# "Room in" in the title catch those listings reliably.
-HMO_EXCLUSION_PATTERNS = [
+# HMO / flatshare giveaways. A listing whose URL, title, or description matches
+# any of these is a room in a shared house, not a whole property — exclude.
+# URL is the most reliable signal — OpenRent slugs like
+# "room-in-a-shared-flat-..." are deterministic.
+HMO_URL_PATTERNS = [
+    re.compile(r"room-in-(?:a-)?shared-(?:flat|house)", re.I),
+    re.compile(r"room-in-(?:a-)?(?:flat|house)", re.I),  # rare older slug variant
+]
+HMO_TEXT_PATTERNS = [
     re.compile(r"rooms?\s+already\s+let", re.I),
     re.compile(r"\bavailable\s+rooms?\b", re.I),
     re.compile(r"\bshared\s+(flat|house|accommodation)\b", re.I),
@@ -31,11 +34,13 @@ HMO_EXCLUSION_PATTERNS = [
 ]
 
 
-def _is_hmo(title: Optional[str], description: Optional[str]) -> bool:
+def _is_hmo(url: Optional[str], title: Optional[str], description: Optional[str]) -> bool:
+    if url and any(p.search(url) for p in HMO_URL_PATTERNS):
+        return True
     blob = " | ".join(s for s in (title, description) if s)
     if not blob:
         return False
-    return any(p.search(blob) for p in HMO_EXCLUSION_PATTERNS)
+    return any(p.search(blob) for p in HMO_TEXT_PATTERNS)
 
 
 def _field(row: sqlite3.Row, name: str) -> Optional[str]:
@@ -139,7 +144,7 @@ def build_cards(conn: sqlite3.Connection) -> dict[str, list[Card]]:
         if bkt is None:
             continue
         # Filter out HMOs / room-shares masquerading as multi-bed flats.
-        if _is_hmo(_field(row, "title"), _field(row, "description")):
+        if _is_hmo(_field(row, "url"), _field(row, "title"), _field(row, "description")):
             continue
         gym = closer_gym(row["lat"], row["lng"])
         gym_route = _route(conn, row["lat"], row["lng"], gym.key)
