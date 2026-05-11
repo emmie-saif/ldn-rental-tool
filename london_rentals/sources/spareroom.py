@@ -1,8 +1,9 @@
-"""SpareRoom whole-flat scraper.
+"""SpareRoom whole-property scraper.
 
-SpareRoom search supports a `searchtype=offered` + `whole_property=Y` filter that
-restricts to entire-property listings (not flatshares). Search URL pattern:
-  https://www.spareroom.co.uk/flatshare/search.pl?...&search_for=whole-properties&where=<outcode>
+The /flatshare/search.pl endpoint serves a generic search form; the actual
+results live at /flatshare/ with showme_whole_property=1 to restrict to
+entire-property listings (not flatshares). URL:
+  https://www.spareroom.co.uk/flatshare/?search=<outcode>&showme_whole_property=1
 """
 from __future__ import annotations
 import logging
@@ -18,7 +19,7 @@ from london_rentals.sources.base import Listing, Source
 
 log = logging.getLogger(__name__)
 
-SEARCH_URL = "https://www.spareroom.co.uk/flatshare/search.pl"
+SEARCH_URL = "https://www.spareroom.co.uk/flatshare/"
 DETAIL_URL = "https://www.spareroom.co.uk/flatshare/flatshare_detail.pl"
 ID_RX = re.compile(r"flatshare_id=(\d+)")
 
@@ -32,10 +33,10 @@ class SpareRoom(Source):
 
     def fetch_outcode(self, outcode: str) -> Iterable[Listing]:
         params = {
-            "search_for": "whole-properties",
-            "where": outcode,
+            "search": outcode,
+            "miles_from_max": "0",
+            "showme_whole_property": "1",
             "max_rent": config.MAX_RENT_CEILING_PCM,
-            "max_beds": config.MAX_BEDROOMS,
             "rent_period": "pcm",
         }
         try:

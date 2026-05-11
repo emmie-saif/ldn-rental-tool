@@ -85,12 +85,29 @@ ROUTE_CACHE_TTL_DAYS = 30
 CLUSTER_LATLNG_DP = 3  # ~110m, house-block resolution
 CLUSTER_PRICE_BAND = 500  # £500 buckets — same flat across sources rarely differs by more
 
-# Rightmove RSS feed URLs. Populate with one URL per outcode after creating
-# saved searches in a throwaway Rightmove account; format:
-#   https://www.rightmove.co.uk/property-to-rent/find.html?...&_xml=true
-RIGHTMOVE_RSS_FEEDS: dict[str, str] = {
-    # "N4": "https://www.rightmove.co.uk/...",
+# Rightmove location identifiers. Each outcode maps to "OUTCODE^<id>" or, for
+# central districts that span multiple outcodes (EC1, WC1), "REGION^<id>".
+# Values verified via los.rightmove.co.uk/typeahead. Stable enough to hardcode.
+RIGHTMOVE_LOCATION_IDS: dict[str, str] = {
+    "N1":  "OUTCODE^1666",
+    "N4":  "OUTCODE^1682",
+    "N5":  "OUTCODE^1683",
+    "N7":  "OUTCODE^1685",
+    "N16": "OUTCODE^1673",
+    "N19": "OUTCODE^1676",
+    "E1":  "OUTCODE^744",
+    "E2":  "OUTCODE^755",
+    "E3":  "OUTCODE^756",
+    "E5":  "OUTCODE^758",
+    "E8":  "OUTCODE^762",
+    "E9":  "OUTCODE^763",
+    "E14": "OUTCODE^749",
+    "EC1": "REGION^91983",
+    "WC1": "REGION^91992",
 }
+
+# Deprecated — kept so existing imports don't break. Use RIGHTMOVE_LOCATION_IDS.
+RIGHTMOVE_RSS_FEEDS: dict[str, str] = {}
 
 # HTTP behaviour. Use a fully realistic browser fingerprint — GH Actions IPs
 # get flagged otherwise (sources have returned 405 with a giveaway UA).
